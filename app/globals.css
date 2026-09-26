@@ -44,6 +44,30 @@ button:focus-visible, textarea:focus-visible, a:focus-visible { outline: 3px sol
 .live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--coral); box-shadow: 0 0 0 3px #f5e8e3; }
 .reset-button { justify-self: end; display: inline-flex; align-items: center; gap: 8px; border: 0; background: transparent; color: #59665e; padding: 9px 0 9px 10px; cursor: pointer; font-size: 12px; transition: color 160ms ease; }
 .reset-button:hover { color: var(--green); }
+.topbar-actions { display: flex; justify-self: end; align-items: center; gap: 20px; }
+.topbar-actions .reset-button { justify-self: auto; }
+.key-settings-button { display: inline-flex; align-items: center; gap: 7px; border: 0; background: transparent; color: #68766c; padding: 8px 0; cursor: pointer; font-size: 11px; transition: color 160ms ease; }
+.key-settings-button:hover, .key-settings-button.key-configured { color: var(--green); }
+.key-settings-button.key-configured svg { color: #568369; }
+.settings-overlay { position: fixed; z-index: 20; inset: 0; display: grid; place-items: center; overflow-y: auto; background: rgba(24, 38, 30, .48); padding: 22px; animation: reveal 160ms ease both; }
+.key-settings-dialog { position: relative; width: min(440px, 100%); border: 1px solid #dce3da; border-radius: 5px; background: #fbfcf8; padding: 27px 29px 21px; box-shadow: 0 24px 70px rgba(14, 34, 23, .22); }
+.settings-dialog-heading { display: flex; justify-content: space-between; align-items: center; }
+.settings-dialog-icon { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 9px 9px 9px 3px; background: #e8efe7; color: var(--green); }
+.settings-close-button { width: 30px; height: 30px; border: 0; background: transparent; color: #758178; cursor: pointer; font-size: 23px; line-height: 1; }
+.settings-eyebrow { margin-top: 24px; color: #849087; font-size: 9px; font-weight: 680; letter-spacing: 1.2px; }
+.key-settings-dialog h2 { margin: 8px 0 0; color: #24352b; font-size: 23px; font-weight: 620; }
+.settings-description { margin: 9px 0 0; color: #758178; font-size: 11px; line-height: 1.8; }
+.key-settings-form { margin-top: 23px; }
+.key-settings-form label { display: block; margin-bottom: 8px; color: #405047; font-size: 11px; font-weight: 650; }
+.key-settings-form input { width: 100%; min-height: 43px; border: 1px solid #d7dfd6; border-radius: 3px; background: #fff; color: var(--ink); padding: 0 12px; font: 12px var(--font-geist-mono), monospace; }
+.key-settings-form input:focus-visible { border-color: #7b9b87; outline: 3px solid rgba(36, 98, 78, .12); outline-offset: 1px; }
+.settings-security-note { margin: 9px 0 0; color: #869188; font-size: 10px; line-height: 1.75; }
+.settings-save-button { width: 100%; justify-content: space-between; margin-top: 18px; }
+.saved-key-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 15px; border-top: 1px solid #e3e8e1; padding-top: 13px; color: #758178; font-size: 10px; }
+.saved-key-row > span { display: inline-flex; align-items: center; gap: 7px; }
+.saved-key-dot { width: 6px; height: 6px; border-radius: 50%; background: #548366; }
+.saved-key-row button { border: 0; background: transparent; color: #a0523d; padding: 4px 0 4px 8px; cursor: pointer; font-size: 10px; }
+.settings-dialog-footnote { margin-top: 16px; color: #a0a9a0; font-size: 9px; line-height: 1.6; }
 .workspace { display: grid; grid-template-columns: 190px minmax(0, 1fr) 250px; gap: 42px; min-height: calc(100vh - 124px); padding: 46px 0 50px; }
 .session-rail { display: flex; flex-direction: column; min-height: 540px; padding: 9px 0 4px; }
 .rail-kicker, .pane-eyebrow, .section-label, .field-label span { color: #89948b; font-size: 10px; font-weight: 650; letter-spacing: 1.2px; }
@@ -181,9 +205,13 @@ h1 em { color: var(--green); font-family: Georgia, "Noto Serif TC", serif; font-
 }
 @media (max-width: 640px) {
   .app-shell { padding: 0 19px; }
-  .topbar { height: 64px; grid-template-columns: 1fr auto; }
+  .topbar { height: 64px; grid-template-columns: auto 1fr; }
   .brand { font-size: 15px; }
   .topbar-context { display: none; }
+  .topbar-actions { gap: 13px; }
+  .key-settings-button { gap: 5px; font-size: 10px; }
+  .reset-button { gap: 5px; font-size: 10px; }
+  .key-settings-dialog { padding: 23px 20px 18px; }
   .workspace, .workspace-active { display: flex; flex-direction: column; gap: 27px; min-height: auto; padding: 31px 0 34px; }
   .session-rail { display: none; }
   .main-pane { padding: 0; }

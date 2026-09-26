@@ -6,13 +6,14 @@ import {
   BriefcaseBusiness,
   Check,
   CircleHelp,
+  KeyRound,
   RotateCcw,
   Send,
   Sparkles,
   UserRound,
 } from "lucide-react";
 import Link from "next/link";
-import { useState, type FormEvent } from "react";
+import { useState, useSyncExternalStore, type FormEvent } from "react";
 
 type Turn = { question: string; answer: string };
 type Dimension = { name: string; score: number };
@@ -29,6 +30,29 @@ type Stage = "setup" | "interview" | "complete";
 
 const MIN_QUESTIONS = 1;
 const MAX_QUESTIONS = 10;
+const API_KEY_STORAGE = "mockmate.openai-api-key";
+const API_KEY_CHANGE_EVENT = "mockmate-api-key-change";
+
+function subscribeToApiKey(onChange: () => void) {
+  window.addEventListener("storage", onChange);
+  window.addEventListener(API_KEY_CHANGE_EVENT, onChange);
+  return () => {
+    window.removeEventListener("storage", onChange);
+    window.removeEventListener(API_KEY_CHANGE_EVENT, onChange);
+  };
+}
+
+function getApiKeySnapshot() {
+  try {
+    return window.localStorage.getItem(API_KEY_STORAGE) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function getServerApiKeySnapshot() {
+  return null;
+}
 
 export default function InterviewWorkspace() {
   const [stage, setStage] = useState<Stage>("setup");
@@ -40,11 +64,25 @@ export default function InterviewWorkspace() {
   const [result, setResult] = useState<InterviewResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const [keyDraft, setKeyDraft] = useState("");
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsError, setSettingsError] = useState("");
+  const storedApiKey = useSyncExternalStore(subscribeToApiKey, getApiKeySnapshot, getServerApiKeySnapshot);
+  const apiKey = storedApiKey ?? "";
+  const keyLoaded = storedApiKey !== null;
 
   const requestInterview = async (body: Record<string, unknown>) => {
+    if (!apiKey) {
+      setSettingsOpen(true);
+      throw new Error("請先在設定中加入自己的 OpenAI API 金鑰。");
+    }
+
     const response = await fetch("/api/interview", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "X-OpenAI-API-Key": apiKey,
+      },
       body: JSON.stringify(body),
     });
     const payload = (await response.json()) as {
@@ -58,6 +96,43 @@ export default function InterviewWorkspace() {
     }
 
     return payload;
+  };
+
+  const saveApiKey = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const nextKey = keyDraft.trim();
+    if (!nextKey) {
+      setSettingsError("請輸入 OpenAI API 金鑰。");
+      return;
+    }
+
+    try {
+      window.localStorage.setItem(API_KEY_STORAGE, nextKey);
+      window.dispatchEvent(new Event(API_KEY_CHANGE_EVENT));
+      setKeyDraft("");
+      setSettingsError("");
+      setError("");
+      setSettingsOpen(false);
+    } catch {
+      setSettingsError("無法儲存至這個瀏覽器，請檢查瀏覽器儲存空間設定。");
+    }
+  };
+
+  const removeApiKey = () => {
+    try {
+      window.localStorage.removeItem(API_KEY_STORAGE);
+      window.dispatchEvent(new Event(API_KEY_CHANGE_EVENT));
+      setKeyDraft("");
+      setSettingsError("");
+    } catch {
+      setSettingsError("無法移除瀏覽器中儲存的金鑰，請稍後再試。");
+    }
+  };
+
+  const openKeySettings = () => {
+    setKeyDraft("");
+    setSettingsError("");
+    setSettingsOpen(true);
   };
 
   const startInterview = async (event: FormEvent<HTMLFormElement>) => {
@@ -131,10 +206,57 @@ export default function InterviewWorkspace() {
           <span className="brand-mark">m</span><span>mockmate</span>
         </Link>
         <div className="topbar-context"><span className="live-dot" />AI 面試練習室</div>
-        <button className="reset-button" onClick={resetInterview} type="button">
-          <RotateCcw size={15} strokeWidth={1.8} /><span>重新開始</span>
-        </button>
+        <div className="topbar-actions">
+          <button className={`key-settings-button ${apiKey ? "key-configured" : ""}`} onClick={openKeySettings} type="button" aria-label="設定 OpenAI API 金鑰" title="OpenAI API 金鑰設定">
+            <KeyRound size={15} strokeWidth={1.8} />
+            <span>{keyLoaded ? (apiKey ? "金鑰已設定" : "設定金鑰") : "金鑰載入中"}</span>
+          </button>
+          <button className="reset-button" onClick={resetInterview} type="button">
+            <RotateCcw size={15} strokeWidth={1.8} /><span>重新開始</span>
+          </button>
+        </div>
       </header>
+
+      {settingsOpen && (
+        <div className="settings-overlay" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) setSettingsOpen(false);
+        }}>
+          <section className="key-settings-dialog" role="dialog" aria-modal="true" aria-labelledby="key-settings-title">
+            <div className="settings-dialog-heading">
+              <span className="settings-dialog-icon"><KeyRound size={18} /></span>
+              <button className="settings-close-button" type="button" onClick={() => setSettingsOpen(false)} aria-label="關閉設定">×</button>
+            </div>
+            <div className="settings-eyebrow">BRING YOUR OWN KEY</div>
+            <h2 id="key-settings-title">連結你的 OpenAI</h2>
+            <p className="settings-description">使用自己的 API 金鑰進行面試練習。金鑰只儲存在這個瀏覽器，呼叫面試 API 時才會傳送。</p>
+            <form className="key-settings-form" onSubmit={saveApiKey}>
+              <label htmlFor="openai-api-key">Secret API key</label>
+              <input
+                id="openai-api-key"
+                type="password"
+                value={keyDraft}
+                onChange={(event) => setKeyDraft(event.target.value)}
+                placeholder={apiKey ? "輸入新金鑰以取代已儲存的金鑰" : "sk-..."}
+                autoComplete="new-password"
+                spellCheck={false}
+                autoFocus
+              />
+              <p className="settings-security-note">金鑰會以 request header 傳至面試 API，不會放進網址或請求本文；正式環境請使用 HTTPS。請勿在共用裝置儲存金鑰。</p>
+              {settingsError && <p className="error-message" role="alert">{settingsError}</p>}
+              <button className="primary-button settings-save-button" type="submit" disabled={!keyLoaded || !keyDraft.trim()}>
+                {apiKey ? "更新金鑰" : "儲存金鑰"}<ArrowRight size={16} />
+              </button>
+            </form>
+            {apiKey && (
+              <div className="saved-key-row">
+                <span><span className="saved-key-dot" />目前已有金鑰儲存在此瀏覽器</span>
+                <button type="button" onClick={removeApiKey}>移除</button>
+              </div>
+            )}
+            <div className="settings-dialog-footnote">API 使用費由你的 OpenAI 帳戶依用量計算。</div>
+          </section>
+        </div>
+      )}
 
       <main className={`workspace ${stage !== "setup" ? "workspace-active" : ""}`}>
         <aside className="session-rail" aria-label="面試工作階段">

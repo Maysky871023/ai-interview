@@ -42,7 +42,7 @@ type InterviewRequest = {
   answer?: string;
 };
 
-// 可用 OPENAI_MODEL 覆寫預設模型，不必修改程式碼。
+// 可選擇用 OPENAI_MODEL 指定模型；使用者 API 金鑰不由環境變數提供。
 const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
 
 // 檢查未知資料是否符合單一評分面向的結構，作為 TypeScript 型別保護。
@@ -120,9 +120,9 @@ function interviewContext(jobDescription: string, turns: Turn[], questionCount: 
 }
 
 // 產生單一道職缺相關問題；每次呼叫只要求模型回傳下一題，不在此處保存狀態。
-async function createQuestion(jobDescription: string, turns: Turn[], questionCount: number) {
-  // API 金鑰只在伺服器端建立 SDK client，不會傳給瀏覽器。
-  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+async function createQuestion(jobDescription: string, turns: Turn[], questionCount: number, apiKey: string) {
+  // 使用本次請求由使用者提供的金鑰，不讀取伺服器儲存的 OpenAI 金鑰。
+  const client = new OpenAI({ apiKey });
   const response = await client.chat.completions.create({
     model,
     // 出題保留一些變化度，並限制回答長度，避免回傳多段說明。
@@ -147,9 +147,9 @@ async function createQuestion(jobDescription: string, turns: Turn[], questionCou
 }
 
 // 產生總評、固定評分面向，以及與實際題數一一對應的回答示範。
-async function createEvaluation(jobDescription: string, turns: Turn[], questionCount: number): Promise<Evaluation> {
+async function createEvaluation(jobDescription: string, turns: Turn[], questionCount: number, apiKey: string): Promise<Evaluation> {
   // 評估使用較低 temperature，讓評分語氣與格式更穩定。
-  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  const client = new OpenAI({ apiKey });
   const response = await client.chat.completions.create({
     model,
     temperature: 0.3,
@@ -213,9 +213,13 @@ async function createEvaluation(jobDescription: string, turns: Turn[], questionC
 
 // Next.js 會將 POST 請求送到這裡；此函式負責驗證輸入並決定面試的下一步。
 export async function POST(request: Request) {
-  // 金鑰缺失時不呼叫 OpenAI，回傳 503 讓前端顯示設定問題。
-  if (!process.env.OPENAI_API_KEY) {
-    return Response.json({ error: "尚未設定 OpenAI API 金鑰。" }, { status: 503 });
+  // BYOK：每次呼叫都必須由瀏覽器透過 request header 提供使用者自己的金鑰。
+  const apiKey = request.headers.get("x-openai-api-key")?.trim();
+  if (!apiKey) {
+    return Response.json({ error: "請先設定自己的 OpenAI API 金鑰。" }, { status: 401 });
+  }
+  if (apiKey.length > 512) {
+    return Response.json({ error: "OpenAI API 金鑰格式不正確。" }, { status: 400 });
   }
 
   let body: unknown;
@@ -245,9 +249,12 @@ export async function POST(request: Request) {
 
     try {
       // 第一次出題尚無歷史問答，但仍傳入使用者選擇的總題數。
-      const question = await createQuestion(jobDescription, [], body.questionCount);
+      const question = await createQuestion(jobDescription, [], body.questionCount, apiKey);
       return Response.json({ question });
-    } catch {
+    } catch (error) {
+      if (isInvalidApiKeyError(error)) {
+        return Response.json({ error: "OpenAI 拒絕這組金鑰，請檢查金鑰是否有效。" }, { status: 401 });
+      }
       return Response.json({ error: "目前無法產生面試題目，請稍後再試。" }, { status: 502 });
     }
   }
@@ -278,14 +285,27 @@ export async function POST(request: Request) {
   try {
     // 完成題數達到設定值時才做總評，否則繼續產生下一題。
     if (completedTurns.length === body.questionCount) {
-      const result = await createEvaluation(jobDescription, completedTurns, body.questionCount);
+      const result = await createEvaluation(jobDescription, completedTurns, body.questionCount, apiKey);
       return Response.json({ result });
     }
 
     // 尚未完成時，將新回答連同先前問答交給模型，產生自適應的下一題。
-    const question = await createQuestion(jobDescription, completedTurns, body.questionCount);
+    const question = await createQuestion(jobDescription, completedTurns, body.questionCount, apiKey);
     return Response.json({ question });
-  } catch {
+  } catch (error) {
+    if (isInvalidApiKeyError(error)) {
+      return Response.json({ error: "OpenAI 拒絕這組金鑰，請檢查金鑰是否有效。" }, { status: 401 });
+    }
     return Response.json({ error: "面試官暫時無法回應，請稍後重試。" }, { status: 502 });
   }
+}
+
+// 只檢查 OpenAI SDK 錯誤的 HTTP status，不把上游錯誤內容或金鑰回傳給瀏覽器。
+function isInvalidApiKeyError(error: unknown) {
+  return Boolean(
+    error &&
+    typeof error === "object" &&
+    "status" in error &&
+    error.status === 401,
+  );
 }
